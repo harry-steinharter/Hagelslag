@@ -15,6 +15,7 @@ from pygestalt import sampler
 import skimage as ski
 
 import math
+from scipy.spatial import cKDTree
 
 from IPython.utils.io import capture_output
 from contextlib import contextmanager
@@ -527,3 +528,59 @@ def regularPolygon(degrees, shape:str, radius=0.25, center:ArrayLike=[.5,.5], pl
         plt.legend()
     
     return Ps, Ts
+
+def adjust_angles(DPGT, freeze_last_n, angle_threshold=15, max_attempts=10,method:str='K',R=None,K=6):
+    """
+    Adjusts angles in a (N,3) array where the first two columns are x,y coords 
+    and the third is an angle in degrees. Tries to make nearby angles dissimilar.
+
+    Parameters:
+        DPGT: np.ndarray of shape (N, 3)
+        angle_threshold: float, minimum angle difference in degrees
+        max_attempts: int, how many times to try picking a new angle
+        freeze_last_n: int, last N rows to leave untouched. Should be len(Ps)
+        method: whether to check all points w/in a certain distance `R` or the `K` closest points
+        K: how many nearest neighbors to look at
+        R: radius to search around
+
+    Returns:
+        adjusted: np.ndarray of shape (N, 3), angles modified in-place except for last N
+    """
+    if method.upper() not in ['R','K']:
+        raise ValueError("`method` should be 'R' (for distance) or 'K' (for K closest).")
+    if R == None and K == None:
+        raise ValueError("Either `R` or `K` should have a value.")
+    
+    adjusted = DPGT.copy()
+    N = DPGT.shape[0]
+    
+    # KDTree for fast nearest neighbor search
+    tree = cKDTree(DPGT[:, :2])
+
+    for i in range(N - freeze_last_n):
+        point = adjusted[i, :2]
+        original_angle = adjusted[i, 2]
+
+        if method == 'K':
+            # Get 7 nearest including self, then take 6 neighbors (excluding self)
+            dists, idxs = tree.query(point, k=K+1)
+        else:
+            idxs = tree.query_ball_point(point,r=R)
+        neighbor_idxs = idxs[idxs != i]
+
+        neighbor_angles = adjusted[neighbor_idxs, 2]
+
+        attempts = 0
+        while attempts < max_attempts:
+            angle_diffs = np.abs(neighbor_angles - adjusted[i, 2]) % 360
+            angle_diffs = np.minimum(angle_diffs, 360 - angle_diffs)  # handle wraparound
+
+            if np.all(angle_diffs >= angle_threshold):
+                break  # OK
+            else:
+                adjusted[i, 2] = np.random.uniform(0, 360)
+                attempts += 1
+        if attempts >= max_attempts:
+            raise ValueError(f"Max attempts exceeded at index {i} (original angle: {original_angle:.2f}). Consider changing `angle_threshold` or `max_attempts`.")
+
+    return adjusted
