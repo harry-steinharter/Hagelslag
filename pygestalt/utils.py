@@ -8,17 +8,68 @@ from matplotlib import pyplot as plt
 
 def angle(dx, dy):
     return np.mod(np.arctan2(dy, dx), np.pi)
+def angle2(dx,dy):
+    return np.mod(np.arctan2(dx-dx.mean(), dy-dy.mean()), np.pi)
 
-def add_jitter(dx, dy, jitter:float, mode:str='random'):
+def add_jitter(dx, dy, jitter:float, mode:str='random',seed=None):
     """Add jitters to given directions.
     """
     # assert H.ndim==2 and H.shape[1]==2, "Wrong input shape."
     assert len(dx)==len(dy)
     j = jitter/180*np.pi
     if mode == 'random':
-        j *= 2*(np.random.rand(len(dx))-0.5)
+        j *= 2*(np.random.RandomState(seed).rand(len(dx))-0.5)
     a = angle(dx, dy) + j
     return np.asarray([np.cos(a), np.sin(a)])
+
+def add_jitter2(dx, dy, jitter:float, mode:str='random',seed=None):
+    """Add jitters to given directions.
+    """
+    # assert H.ndim==2 and H.shape[1]==2, "Wrong input shape."
+    assert len(dx)==len(dy)
+    j = jitter/180*np.pi
+    if mode == 'random':
+        j *= 2*(np.random.RandomState(seed).rand(len(dx))-0.5)
+    a = angle2(dx, dy) + j
+    return np.asarray([np.cos(a), np.sin(a)])
+
+
+def create_alternating_phi_array(dx, phi):
+    result = [90]
+    
+    for i in range(1, len(dx)):
+        scaled_phi = phi*i
+        if i % 2 == 1:
+            result.append(result[-1] + scaled_phi)
+        else:
+            result.append(result[-1] - scaled_phi)
+    
+    return np.array(result)
+
+def add_jitter3(dx,dy,phi,shape,jitter:float,seed=None):
+    '''
+    Just manually add the angles we want, then randomize jitter
+    Args:
+    dx, dy: x and y coordinates (only used for correct # of points)
+    phi: external angle measurement
+    jitter: degrees of jitter added [mean absolute value, SD = 2]
+    shape: `C` or `BC` indicating the order to apply jitter
+    '''
+    n = len(dx)
+    j = np.deg2rad(jitter)
+    j *= 2*(np.random.RandomState(seed).rand(len(dx))-0.5) # uniform dist, mean 0, range = -1:1
+    
+    if shape.upper() == 'BC':
+        a = np.linspace(150,30,len(dx),True)
+        #a = np.deg2rad(np.flip(create_alternating_phi_array(dx,phi)))
+    elif shape.upper() == 'C':
+        #a = np.deg2rad(create_alternating_phi_array(dx,phi))
+        a = np.linspace(30,150,len(dx),True)
+    else:
+        raise ValueError("`shape` must be 'C' or 'BC', case-insensitive.") 
+    a = np.deg2rad(a) + j
+        
+    return(np.asarray([np.cos(a), np.sin(a)]))
 
 
 def image_derivative(X:ArrayLike, method:str='sobel') -> tuple[ArrayLike]:
